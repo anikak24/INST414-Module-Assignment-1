@@ -1,0 +1,201 @@
+# Module Assignment 1 - Anika Kagalavadi
+
+# Installing necessary packages and libraries
+install.packages("nflfastR")
+install.packages("tidyverse", type = "binary")
+install.packages("ggrepel", type = "binary")
+install.packages("nflreadr", type = "binary")
+install.packages("nflplotR", type = "binary")
+library(tidyverse)
+library(ggrepel)
+library(nflreadr)
+library(nflplotR)
+library(dplyr)
+library(ggplot2)
+options(scipen = 9999)
+
+# Code for different situations
+# Summarized table of Ravens quarterbacks’ passing performance by throw depth, game situation, key metrics (CPOE, EPA)
+
+pbp <- load_pbp(2020:2024)
+ravens_qb_cpoe <- pbp |>
+  filter(
+    season_type == "REG",
+    posteam == "BAL",
+    play_type == "pass",
+    !is.na(cpoe),
+    !is.na(air_yards)
+  ) |>
+  
+  mutate(
+    throw_depth = case_when(
+      air_yards <= 0 ~ "Behind LOS",
+      air_yards <= 10 ~ "Short (1–10)",
+      air_yards <= 20 ~ "Intermediate (11–20)",
+      TRUE ~ "Deep (21+)"
+    ),
+    situation = case_when(
+      score_differential > 14 ~ "Leading by 14+",
+      score_differential >= 0 ~ "Leading/Tied (0–13)",
+      score_differential > -14 ~ "Losing by <14",
+      TRUE ~ "Losing by 14+"
+    )
+  ) |>
+  
+  group_by(passer_player_name, throw_depth, situation) |>
+  summarize(
+    avg_cpoe = mean(cpoe, na.rm = TRUE),
+    n_passes = n(),
+    avg_air_yards = mean(air_yards, na.rm = TRUE),
+    avg_qb_epa = mean(qb_epa, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  
+  filter(n_passes >= 10)
+ravens_qb_cpoe
+
+# Visualization: Ravens QB Completion % Over Expected by Throw Depth & Situation
+ggplot(ravens_qb_cpoe, aes(x = throw_depth, y = situation, fill = avg_cpoe)) +
+  geom_tile(color = "white") +
+  facet_wrap(~ passer_player_name) +
+  scale_fill_gradient2(
+    low = "red", mid = "white", high = "blue", midpoint = 0,
+    name = "Avg CPOE (%)"
+  ) +
+  labs(
+    title = "Ravens QB Completion % Over Expected by Throw Depth & Situation",
+    x = "Throw Depth (yds)",
+    y = "Game Situation"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(panel.grid = element_blank())
+
+# Ravens QB Efficiency (EPA) by Throw Depth and Situation
+ggplot(ravens_qb_cpoe, aes(x = throw_depth, y = avg_qb_epa, fill = passer_player_name)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ situation) +
+  labs(
+    title = "Ravens QB Efficiency (EPA) by Throw Depth & Situation",
+    x = "Throw Depth",
+    y = "Average QB EPA",
+    fill = "QB"
+  ) +
+  theme_minimal(base_size = 13)
+
+# Ravens QB Accuracy (CPOE) vs. Throw Depth by Situation 
+ggplot(ravens_qb_cpoe, aes(x = avg_air_yards, y = avg_cpoe)) +
+  geom_point(aes(size = n_passes, color = passer_player_name), alpha = 0.7) +
+  facet_wrap(~ situation) +
+  labs(
+    title = "Ravens QB Accuracy vs. Throw Depth by Situation",
+    x = "Average Air Yards",
+    y = "Average CPOE",
+    size = "Number of Passes",
+    color = "QB"
+  ) +
+  theme_minimal(base_size = 13)
+
+# Overall Ravens QB Efficiency (2020–2024)
+overall_eff <- ravens_pbp |>
+  group_by(season, passer_player_name) |>
+  summarize(
+    avg_cpoe = mean(cpoe, na.rm = TRUE),
+    avg_cp = mean(cp, na.rm = TRUE),
+    n_passes = n(),
+    .groups = "drop"
+  )
+
+ggplot(overall_eff, aes(x = season, y = avg_cpoe, color = passer_player_name)) +
+  geom_line(linewidth = 1.1) +
+  geom_point(size = 3) +
+  labs(
+    title = "Baltimore Ravens QB CPOE (2010–2024)",
+    x = "Season", y = "Average CPOE (%)",
+    color = "Quarterback"
+  ) +
+  theme_minimal(base_size = 13)
+
+# Ravens QB Completion Efficiency by Down (2020-2024)
+down_eff <- ravens_pbp |>
+  group_by(down, passer_player_name) |>
+  summarize(avg_cpoe = mean(cpoe, na.rm = TRUE), .groups = "drop")
+
+ggplot(down_eff, aes(x = factor(down), y = avg_cpoe, fill = passer_player_name)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Ravens QB Completion Efficiency by Down (2020–2024)",
+    x = "Down", y = "Average CPOE (%)",
+    fill = "QB"
+  ) +
+  theme_minimal(base_size = 13)
+
+# Passing Efficiency by Down: Ravens QBs vs. Rest of League (2020–2024)"
+pbp_filtered <- pbp |>
+  filter(
+    season_type == "REG",
+    play_type == "pass",
+    season >= 2020, season <= 2024,
+    !is.na(cpoe),
+    !is.na(cp),
+    !is.na(passer_player_name)
+  ) |>
+  mutate(
+    is_ravens_qb = ifelse(posteam == "BAL", "Ravens QB", "Other QBs")
+  )
+
+down_comp <- pbp_filtered |>
+  group_by(is_ravens_qb, down) |>
+  summarize(
+    avg_cp = mean(cp, na.rm = TRUE),
+    avg_cpoe = mean(cpoe, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+ggplot(down_comp, aes(x = factor(down), y = avg_cpoe, fill = is_ravens_qb)) + #Visualization
+  geom_col(position = "dodge") +
+  labs(
+    title = "CPOE by Down: Ravens vs. Rest of NFL (2020–2024)",
+    x = "Down", y = "Average CPOE (%)", fill = "Group"
+  ) +
+  theme_minimal(base_size = 13)
+
+# QB Efficiency vs. Accuracy (League Comparison)
+pbp <- load_pbp(2020:2024)
+ravens_pbp <- pbp %>%
+  filter(posteam == "BAL", play_type == "pass") %>%
+  select(game_id, season, play_id, quarter_end, game_seconds_remaining,
+         posteam, passer_player_name, passer_player_id, pass,
+         cp, cpoe, air_yards, down, ydstogo, epa, score_differential)
+
+qbs <- pbp %>%
+  filter(season_type == "REG", !is.na(epa)) %>%
+  group_by(passer_player_id, passer_player_name) %>%
+  summarize(
+    epa = mean(qb_epa, na.rm = TRUE),
+    cpoe = mean(cpoe, na.rm = TRUE),
+    n_dropbacks = sum(pass, na.rm = TRUE),
+    n_plays = n(),
+    team = last(posteam),
+    .groups = "drop"
+  ) %>%
+  ungroup() %>%
+  filter(n_dropbacks > 100, n_plays > 1000)
+
+ggplot(qbs, aes(x = cpoe, y = epa)) +
+  geom_point(aes(color = team), alpha = 0.6) +
+  geom_point(
+    data = subset(qbs, team == "BAL"),
+    color = "purple", size = 4
+  ) +
+  geom_text(
+    data = subset(qbs, team == "BAL"),
+    aes(label = passer_player_name),
+    vjust = -1, color = "purple", fontface = "bold"
+  ) +
+  labs(
+    title = "QB Efficiency vs Accuracy (2020–2024)",
+    x = "Completion Percentage Over Expected (CPOE)",
+    y = "Expected Points Added per Play (EPA)",
+    caption = "Data: nflfastR"
+  ) +
+  theme_minimal(base_size = 13)
