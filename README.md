@@ -1,4 +1,3 @@
-# INST414-Module-Assignment-1
-Code for INST414 Module Assignment #1
+# Efficiency and Accuracy of Ravens QBs Across Different Passing Situations 
 
 Link to nflfastR website: https://nflfastr.com/
